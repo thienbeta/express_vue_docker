@@ -70,25 +70,25 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
-
-  # Frontend Service (Vue.js)
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    # Frontend Service (Vue.js)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: frontend_container
     ports:
-      - "8080:8080"
+      - "5173:5173" # Vite default port
     environment:
-      VUE_APP_API_URL: http://localhost:3000
-    depends_on:
-      - backend
-    networks:
-      - app-network
+      CHOKIDAR_USEPOLLING: "true"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/dist
 
 # Networks and Volumes
 networks:

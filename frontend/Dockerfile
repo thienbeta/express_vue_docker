@@ -1,5 +1,4 @@
-# Build stage
-FROM node:16 as build-stage
+FROM node:18-alpine
 
 WORKDIR /app
 
@@ -9,15 +8,6 @@ RUN npm install
 
 COPY . .
 
-RUN npm run build
+EXPOSE 5173
 
-# Production stage
-FROM nginx:stable-alpine as production-stage
-
-COPY --from=build-stage /app/dist /usr/share/nginx/html
-
-COPY ./nginx.conf /etc/nginx/conf.d/default.conf
-
-EXPOSE 8080
-
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "run", "dev"]

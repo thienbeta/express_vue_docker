@@ -8,7 +8,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// MySQL connection
 const dbConfig = {
     host: process.env.DB_HOST || 'mysql',
     user: process.env.DB_USER || 'user',
@@ -16,7 +15,6 @@ const dbConfig = {
     database: process.env.DB_NAME || 'myapp'
 };
 
-// MinIO connection
 const minioClient = new Minio.Client({
     endPoint: process.env.MINIO_ENDPOINT || 'minio',
     port: parseInt(process.env.MINIO_PORT) || 9000,
@@ -25,24 +23,91 @@ const minioClient = new Minio.Client({
     secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin'
 });
 
-// Test endpoint
-app.get('/api/test', async (req, res) => {
+// Hàm kiểm tra kết nối MySQL với đo thời gian
+async function checkMySQLConnection() {
+    const start = Date.now();
     try {
-        // Test MySQL connection
         const connection = await mysql.createConnection(dbConfig);
         const [rows] = await connection.execute('SELECT 1 + 1 AS solution');
-        connection.end();
+        await connection.end();
 
-        // Test MinIO connection
+        const duration = Date.now() - start;
+        return {
+            status: rows[0].solution === 2 ? 'OK' : 'ERROR',
+            duration: `${duration}ms`
+        };
+    } catch (error) {
+        return {
+            status: 'ERROR',
+            duration: `${Date.now() - start}ms`,
+            error: error.message
+        };
+    }
+}
+
+// Hàm kiểm tra kết nối MinIO với đo thời gian
+async function checkMinIOConnection() {
+    const start = Date.now();
+    try {
         const buckets = await minioClient.listBuckets();
+        const duration = Date.now() - start;
+        return {
+            status: buckets ? 'OK' : 'ERROR',
+            duration: `${duration}ms`
+        };
+    } catch (error) {
+        return {
+            status: 'ERROR',
+            duration: `${Date.now() - start}ms`,
+            error: error.message
+        };
+    }
+}
+
+// Health check endpoint cho Docker
+app.get('/health', async (req, res) => {
+    const healthCheck = {
+        uptime: process.uptime(),
+        timestamp: Date.now(),
+        checks: {}
+    };
+
+    try {
+        healthCheck.checks.mysql = await checkMySQLConnection();
+        healthCheck.checks.minio = await checkMinIOConnection();
+
+        // Kiểm tra nếu có service nào lỗi
+        const hasError = Object.values(healthCheck.checks).some(
+            check => check.status === 'ERROR'
+        );
+
+        const statusCode = hasError ? 503 : 200;
+        res.status(statusCode).json(healthCheck);
+    } catch (error) {
+        healthCheck.error = error.message;
+        res.status(503).json(healthCheck);
+    }
+});
+
+// Test endpoint (phiên bản cải tiến)
+app.get('/api/test', async (req, res) => {
+    try {
+        const mysqlCheck = await checkMySQLConnection();
+        const minioCheck = await checkMinIOConnection();
 
         res.json({
-            mysql: rows[0].solution === 2 ? 'OK' : 'Error',
-            minio: buckets ? 'OK' : 'Error',
-            message: 'Backend is working!'
+            services: {
+                mysql: mysqlCheck,
+                minio: minioCheck
+            },
+            message: 'Backend is working!',
+            uptime: process.uptime()
         });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({
+            error: error.message,
+            timestamp: Date.now()
+        });
     }
 });
 
